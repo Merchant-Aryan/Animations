@@ -1,0 +1,12 @@
+{
+  "name": "morphyxcam",
+  "version": "1.0.0",
+  "description": "PhotoBooth WebGL Application",
+  "scripts": {
+    "build": "echo 'No build step required for static site'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+

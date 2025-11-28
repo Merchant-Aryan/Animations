@@ -1,8 +1,10 @@
 {
+  "buildCommand": "echo 'Static site - no build needed'",
+  "outputDirectory": "MyDemoPhotoBooth",
   "rewrites": [
     {
       "source": "/",
-      "destination": "/MyDemoPhotoBooth/PhotoBooth.html"
+      "destination": "/PhotoBooth.html"
     }
   ]
 }
