@@ -1,0 +1,463 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MorphyxCam</title>
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="PhotoBooth.css" />
+
+    <!-- Shader Scripts -->
+    <script id="vertex-shader1" type="x-shader/x-vertex">
+      #version 300 es
+      precision highp float;
+      precision highp int;
+
+      in vec4 vPosition;
+      in vec4 vColor;
+      in vec2 vTexCoord;
+      out vec4 fColor;
+      out vec2 fTexCoord;
+
+      uniform vec3 theta;
+
+      void main()
+      {
+          vec3 angles = radians(theta);
+          vec3 c = cos(angles);
+          vec3 s = sin(angles);
+
+          mat4 rx = mat4(
+              1.0,  0.0,  0.0, 0.0,
+              0.0,  c.x,  s.x, 0.0,
+              0.0, -s.x,  c.x, 0.0,
+              0.0,  0.0,  0.0, 1.0
+          );
+
+          mat4 ry = mat4(
+              c.y, 0.0, -s.y, 0.0,
+              0.0, 1.0,  0.0, 0.0,
+              s.y, 0.0,  c.y, 0.0,
+              0.0, 0.0,  0.0, 1.0
+          );
+
+          mat4 rz = mat4(
+              c.z, -s.z, 0.0, 0.0,
+              s.z,  c.z, 0.0, 0.0,
+              0.0,  0.0, 1.0, 0.0,
+              0.0,  0.0, 0.0, 1.0
+          );
+
+          fColor = vColor;
+          fTexCoord = vTexCoord;
+          gl_Position = rz * ry * rx * vPosition;
+      }
+    </script>
+
+    <script id="fragment-shader1" type="x-shader/x-fragment">
+      #version 300 es
+      precision highp float;
+      precision highp int;
+
+      in vec4 fColor;
+      in vec2 fTexCoord;
+      out vec4 fragmentColor;
+
+      uniform sampler2D sampTexture;
+
+      void main()
+      {
+          fragmentColor = fColor * texture(sampTexture, fTexCoord);
+      }
+    </script>
+
+    <script id="vertex-shader2" type="x-shader/x-vertex">
+      #version 300 es
+      precision highp float;
+      precision highp int;
+
+      in vec4 vPosition;
+      in vec2 vTexCoord;
+      out vec2 fTexCoord;
+
+      uniform mat4 modelViewMatrix;
+      uniform mat4 projectionMatrix;
+
+      void main()
+      {
+          gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+          fTexCoord = vTexCoord;
+      }
+    </script>
+
+    <script id="fragment-shader2" type="x-shader/x-fragment">
+      #version 300 es
+      precision highp float;
+      precision highp int;
+
+      in vec2 fTexCoord;
+      out vec4 fragmentColor;
+      uniform bool useBlack;
+      uniform bool hasTexture;
+      uniform sampler2D sampTexture;
+
+      void main()
+      {
+          if (useBlack) {
+              fragmentColor = vec4(0.0, 0.0, 0.0, 1.0);
+          }
+          else if (!hasTexture) {
+              fragmentColor = vec4(0.0, 1.0, 0.0, 1.0);
+          }
+          else {
+              fragmentColor = texture(sampTexture, fTexCoord);
+          }
+      }
+    </script>
+
+    <!-- CCapture.js for exporting animations (supports GIF, WebM, PNG, JPEG) -->
+    <!-- Using local copy to avoid CDN dependency and improve offline support -->
+    <script src="CCapture.all.min.js"></script>
+
+    <!-- Common Utilities -->
+    <script src="Common/webgl-utils.js"></script>
+    <script src="Common/MV.js"></script>
+    <script src="Common/initShaders.js"></script>
+  </head>
+
+  <body>
+    <div class="container-fluid py-4">
+      <div class="row mb-4">
+        <div class="col-12">
+          <h1 class="text-center mb-4">📸 MorphyxCam</h1>
+          <div class="d-flex justify-content-center gap-2 mb-3 flex-wrap">
+            <button id="allowcapture" class="btn btn-primary">
+              📹 Enable Camera
+            </button>
+            <button id="stopcamera" class="btn btn-danger">
+              ⏹️ Stop Camera
+            </button>
+            <button id="clearcapture" class="btn btn-secondary">
+              ✖️ Clear
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 1: Camera View and Captured Photo (50-50 split) -->
+      <div class="row mb-4">
+        <!-- Camera Section -->
+        <div class="col-lg-6 col-md-6 mb-4">
+          <div class="card shadow h-100">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0">📷 Camera View</h5>
+            </div>
+            <div class="card-body p-0 position-relative d-flex flex-column">
+              <video
+                id="video"
+                class="w-100"
+                autoplay
+                muted
+                aria-label="Camera video feed"
+                playsinline
+                style="flex: 1; min-height: 200px"
+              ></video>
+              <div class="camera-controls p-3 bg-light">
+                <div class="mb-2">
+                  <label class="form-label small" for="zoomControl"
+                    >Zoom: <span id="zoomValue">1.0x</span></label
+                  >
+                  <input
+                    type="range"
+                    id="zoomControl"
+                    class="form-range"
+                    min="1"
+                    max="3"
+                    step="0.1"
+                    value="1"
+                    aria-label="Camera zoom level"
+                    title="Adjust camera zoom level"
+                  />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small" for="brightnessControl"
+                    >Brightness: <span id="brightnessValue">0</span></label
+                  >
+                  <input
+                    type="range"
+                    id="brightnessControl"
+                    class="form-range"
+                    min="-50"
+                    max="50"
+                    step="1"
+                    value="0"
+                    aria-label="Image brightness adjustment"
+                    title="Adjust image brightness"
+                  />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small" for="contrastControl"
+                    >Contrast: <span id="contrastValue">100</span>%</label
+                  >
+                  <input
+                    type="range"
+                    id="contrastControl"
+                    class="form-range"
+                    min="50"
+                    max="200"
+                    step="1"
+                    value="100"
+                    aria-label="Image contrast adjustment"
+                    title="Adjust image contrast"
+                  />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small" for="saturationControl"
+                    >Saturation: <span id="saturationValue">100</span>%</label
+                  >
+                  <input
+                    type="range"
+                    id="saturationControl"
+                    class="form-range"
+                    min="0"
+                    max="200"
+                    step="1"
+                    value="100"
+                    aria-label="Image saturation adjustment"
+                    title="Adjust image saturation"
+                  />
+                </div>
+                <button id="startcapture" class="btn btn-success w-100 mt-2">
+                  📸 Capture Photo
+                </button>
+                <input
+                  type="file"
+                  id="uploadPhoto"
+                  accept="image/*"
+                  style="display: none"
+                />
+                <button id="uploadPhotoBtn" class="btn btn-info w-100 mt-2">
+                  📁 Upload Photo from Device
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Captured Photo Section -->
+        <div class="col-lg-6 col-md-6 mb-4">
+          <div class="card shadow h-100">
+            <div class="card-header bg-success text-white">
+              <h5 class="mb-0">🖼️ Captured Photo</h5>
+            </div>
+            <div class="card-body d-flex flex-column">
+              <div
+                id="sldrdiv"
+                class="sldrBox mb-3"
+                style="flex: 1; min-height: 200px"
+              >
+                <img
+                  id="photo"
+                  src=""
+                  alt="Captured photo will appear here"
+                  class="w-100"
+                />
+              </div>
+
+              <div id="filters" class="mb-3">
+                <h6 class="mb-2">Filters:</h6>
+                <div class="btn-group-vertical w-100 gap-1" role="group">
+                  <button id="normalBtn" class="btn btn-sm btn-outline-primary">
+                    Normal
+                  </button>
+                  <div class="btn-group" role="group">
+                    <button
+                      id="grayscaleBtn"
+                      class="btn btn-sm btn-outline-secondary"
+                    >
+                      Grayscale
+                    </button>
+                    <button
+                      id="brightenBtn"
+                      class="btn btn-sm btn-outline-warning"
+                    >
+                      Brighten
+                    </button>
+                  </div>
+                  <div class="btn-group" role="group">
+                    <button id="sepiaBtn" class="btn btn-sm btn-outline-info">
+                      Sepia
+                    </button>
+                    <button
+                      id="invertBtn"
+                      class="btn btn-sm btn-outline-danger"
+                    >
+                      Invert
+                    </button>
+                  </div>
+                  <div class="btn-group" role="group">
+                    <button
+                      id="cartoonBtn"
+                      class="btn btn-sm btn-outline-success"
+                    >
+                      Cartoon
+                    </button>
+                    <button
+                      id="emojiOverlayBtn"
+                      class="btn btn-sm btn-outline-primary"
+                    >
+                      Emoji Overlay
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small" for="imgheightsldr"
+                  >Image Height: <span id="imgheighttxt">0</span>px</label
+                >
+                <input
+                  id="imgheightsldr"
+                  type="range"
+                  class="form-range"
+                  min="0"
+                  max="0"
+                  step="1"
+                  value="0"
+                  aria-label="Adjust captured image height"
+                  title="Adjust captured image height in pixels"
+                />
+              </div>
+              <div class="mb-2">
+                <label class="form-label small" for="imgwidthsldr"
+                  >Image Width: <span id="imgwidthtxt">0</span>px</label
+                >
+                <input
+                  id="imgwidthsldr"
+                  type="range"
+                  class="form-range"
+                  min="0"
+                  max="0"
+                  step="1"
+                  value="0"
+                  aria-label="Adjust captured image width"
+                  title="Adjust captured image width in pixels"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: 3D Shapes Gallery (100% width) -->
+      <div class="row mb-4">
+        <!-- Unified 3D Shapes Section -->
+        <div class="col-12 mb-4">
+          <div class="card shadow h-100">
+            <div class="card-header bg-info text-white">
+              <h5 class="mb-0">🎨 3D Shapes Gallery</h5>
+            </div>
+            <div class="card-body text-center d-flex flex-column">
+              <div class="mb-3">
+                <label for="shapeSelector" class="form-label fw-bold"
+                  >Select Shape:</label
+                >
+                <select
+                  id="shapeSelector"
+                  class="form-select form-select-lg mb-3"
+                  aria-label="Select 3D shape"
+                >
+                  <option value="cube" selected>🎲 Cube</option>
+                  <option value="sphere">🌐 Sphere</option>
+                  <option value="cube_fast">⚡ High Speed Rotating Cube</option>
+                  <option value="tetrahedron">🔺 Tetrahedron</option>
+                  <option value="octahedron">🔶 Octahedron</option>
+                  <option value="polyhedron">🔷 Polyhedron</option>
+                </select>
+              </div>
+              <div
+                class="flex-grow-1 d-flex align-items-center justify-content-center mb-3"
+              >
+                <canvas
+                  id="canvas2"
+                  width="800"
+                  height="800"
+                  class="border rounded"
+                  style="
+                    max-width: 100%;
+                    max-height: 100%;
+                    height: auto;
+                    width: auto;
+                  "
+                ></canvas>
+              </div>
+              <div class="btn-group mb-2" role="group">
+                <button id="rotatex" class="btn btn-sm btn-outline-primary">
+                  Rotate X
+                </button>
+                <button id="rotatey" class="btn btn-sm btn-outline-primary">
+                  Rotate Y
+                </button>
+                <button id="rotatez" class="btn btn-sm btn-outline-primary">
+                  Rotate Z
+                </button>
+              </div>
+              <button id="togglerot" class="btn btn-sm btn-success w-100 mb-2">
+                Toggle Auto-Rotate
+              </button>
+              <button
+                id="exportShapeGif"
+                class="btn btn-sm btn-warning w-100 mb-2"
+              >
+                💾 Export Shape as GIF
+              </button>
+              <p id="shapeInstructions" class="small text-muted mt-2 mb-0">
+                Use Arrow Keys or WASD to rotate (for sphere)
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Export Status (100% width) -->
+      <div class="row">
+        <!-- GIF Export Status -->
+        <div class="col-12 mb-4">
+          <div class="card shadow">
+            <div class="card-header bg-dark text-white">
+              <h5 class="mb-0">📥 Export Status</h5>
+            </div>
+            <div class="card-body">
+              <div id="exportStatus" class="alert alert-info">
+                Ready to export animations as GIF
+              </div>
+              <div id="gifPreview" class="text-center"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <canvas id="canvas1" style="display: none"></canvas>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Common Utilities (loaded here if needed before other scripts) -->
+    <!-- Already loaded in head section, but can be loaded here if preferred -->
+
+    <!-- OBJ Model Data -->
+    <script src="Polyhedron.js"></script>
+
+    <!-- Filter Manager -->
+    <script src="FilterManager.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="PhotoBooth.js"></script>
+  </body>
+</html>

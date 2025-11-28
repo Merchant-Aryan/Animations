@@ -2,14 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="0; url=MyDemoPhotoBooth/PhotoBooth.html">
     <script>
-        window.location.href = "MyDemoPhotoBooth/PhotoBooth.html";
+        // Immediate redirect
+        if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+            window.location.replace('MyDemoPhotoBooth/PhotoBooth.html');
+        }
     </script>
-    <title>Redirecting...</title>
+    <title>Redirecting to MorphyxCam...</title>
 </head>
 <body>
-    <p>If you are not redirected automatically, <a href="MyDemoPhotoBooth/PhotoBooth.html">click here</a>.</p>
+    <p>Redirecting to <a href="MyDemoPhotoBooth/PhotoBooth.html">MorphyxCam</a>...</p>
 </body>
 </html>
 
